@@ -1,0 +1,56 @@
+version: 2
+builds:
+- main: ./cmd/cryptotest
+  binary: ./cryptotest
+  env:
+  - CGO_ENABLED=0
+  flags:
+  - -trimpath
+  goos:
+  - darwin
+  - linux
+  - freebsd
+  - windows
+  goarch:
+  - amd64
+  - arm64
+  - arm
+  - s390x
+  - ppc64le
+  - riscv64
+  goarm:
+  - '7'
+  ignore:
+  - goos: freebsd
+    goarch: arm64
+  - goos: freebsd
+    goarch: arm
+  - goos: freebsd
+    goarch: ppc64le
+  - goos: freebsd
+    goarch: riscv64
+  - goos: freebsd
+    goarch: s390x
+  - goos: windows
+    goarch: arm64
+  - goos: windows
+    goarch: arm
+  - goos: darwin
+    goarch: arm
+  ldflags:
+  # one-line ldflags to bypass the goreleaser bugs
+  # the git tree state is guaranteed to be clean by goreleaser
+  - -w -s -buildid= -X github.com/shizhMSFT/registry-test/internal/version.Version={{.Version}} -X github.com/shizhMSFT/registry-test/internal/version.BuildMetadata=
+  mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - format: tar.gz
+    files:
+    - LICENSE
+    format_overrides:
+    - goos: windows
+      format: zip
+
+release:
+  draft: true
+  prerelease: auto
