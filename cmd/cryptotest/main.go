@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto"
 	"fmt"
 	"log"
 	"net/http"
@@ -19,6 +20,11 @@ import (
 	"github.com/urfave/cli/v2"
 	"oras.land/oras-go/v2/registry/remote/auth"
 )
+
+func init() {
+	// Register SHA-384 algorithm, which is not registered by default
+	digest.RegisterAlgorithm(digest.SHA384, crypto.SHA384)
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -79,9 +85,10 @@ func run() error {
 				ClientID: "registry-test",
 			}
 			client.SetUserAgent("registry-test/" + version.GetVersion())
-			ctx, _ := trace.NewLogger(c.Context)
+			ctx, logger := trace.NewLogger(c.Context)
 			suite := &TestSuite{
 				Context:   ctx,
+				Logger:    logger,
 				Registry:  c.String("registry"),
 				Namespace: c.String("namespace"),
 				Client:    client,
@@ -123,12 +130,16 @@ func runTest(suite *TestSuite) error {
 			fmt.Println("<summary>Test logs</summary>")
 			result := test(alg)
 			fmt.Println("</details>")
-			if result {
+			switch result {
+			case TestResultSuccess:
 				results[i] = append(results[i], "✅")
 				fmt.Println("✅ Passed")
-			} else {
+			case TestResultFailure:
 				results[i] = append(results[i], "❌")
 				fmt.Println("❌ Failed")
+			case TestResultNoImplementation:
+				results[i] = append(results[i], "⚠️")
+				fmt.Println("⚠️ Functionality not implemented")
 			}
 			i++
 		}

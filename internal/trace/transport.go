@@ -24,19 +24,19 @@ func NewTransport(base http.RoundTripper) *Transport {
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	id := atomic.AddUint64(&requestCount, 1) - 1
 	ctx := req.Context()
-	logger := Logger(ctx).WithField("request_id", id)
+	logger := Logger(ctx)
 
 	// log the request
-	logger.Debugf("📤 %s %s\n%s\n\n", req.Method, req.URL, logHeader(req.Header))
+	logger.Debugf("📤 Request #%d\n%s %s\n%s\n\n", id, req.Method, req.URL, logHeader(req.Header))
 
 	// log the response
 	resp, err := t.RoundTripper.RoundTrip(req)
 	if err != nil {
-		logger.Errorf("❌ Error: %v", err)
+		logger.Errorf("❌ Response #%d\nError: %v", id, err)
 	} else if resp == nil {
-		logger.Errorf("❌ Missing response")
+		logger.Errorf("❌ Response #%d\nMissing response", id)
 	} else {
-		logger.Debugf("📥 %s\n%s\n\n%s\n", resp.Status, logHeader(resp.Header), logResponseBody(resp))
+		logger.Debugf("📥 Response #%d\n%s\n%s\n\n%s\n", id, resp.Status, logHeader(resp.Header), logResponseBody(resp))
 	}
 
 	return resp, err
@@ -61,7 +61,6 @@ func logResponseBody(resp *http.Response) string {
 	if resp == nil || resp.Body == nil {
 		return ""
 	}
-	defer resp.Body.Close()
 
 	buf := bytes.NewBuffer(nil)
 	body := resp.Body
