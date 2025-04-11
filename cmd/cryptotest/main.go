@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -69,6 +70,11 @@ func run() error {
 				Usage: "Namespace for the registry",
 				Value: "crypto-test",
 			},
+			&cli.StringFlag{
+				Name:    "output",
+				Aliases: []string{"o"},
+				Usage:   "Output file for the test results",
+			},
 		},
 		Action: func(c *cli.Context) error {
 			registry := c.String("registry")
@@ -85,7 +91,16 @@ func run() error {
 				ClientID: "registry-test",
 			}
 			client.SetUserAgent("registry-test/" + version.GetVersion())
-			ctx, logger := trace.NewLogger(c.Context)
+			output := c.App.Writer
+			if outPath := c.String("output"); outPath != "" {
+				file, err := os.Create(outPath)
+				if err != nil {
+					return fmt.Errorf("failed to create output file: %w", err)
+				}
+				defer file.Close()
+				output = file
+			}
+			ctx, logger := trace.NewLogger(c.Context, output)
 			suite := &TestSuite{
 				Context:   ctx,
 				Logger:    logger,
@@ -94,7 +109,7 @@ func run() error {
 				Client:    client,
 				PlainHTTP: c.Bool("plain-http"),
 			}
-			return runTest(suite)
+			return runTest(suite, output)
 		},
 		HideHelpCommand: true,
 	}
@@ -103,9 +118,9 @@ func run() error {
 	return app.RunContext(ctx, os.Args)
 }
 
-func runTest(suite *TestSuite) error {
+func runTest(suite *TestSuite, out io.Writer) error {
 	// Print title
-	fmt.Println("# Crypto Agility Test for", suite.Registry)
+	fmt.Fprintln(out, "# Crypto Agility Test for", suite.Registry)
 
 	// Test cases
 	algorithms := []digest.Algorithm{
@@ -119,35 +134,37 @@ func runTest(suite *TestSuite) error {
 		results = append(results, []any{name})
 	}
 	for _, alg := range algorithms {
-		fmt.Println()
-		fmt.Println("## Test", alg)
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "## Test", alg)
 		i := 0
 		for name, test := range suite.Cases() {
-			fmt.Println()
-			fmt.Println("###", name)
-			fmt.Println()
-			fmt.Println("<details>")
-			fmt.Println("<summary>Test logs</summary>")
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, "###", name)
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, "<details>")
+			fmt.Fprintln(out, "<summary>Test logs</summary>")
+			fmt.Fprintln(out, "```")
 			result := test(alg)
-			fmt.Println("</details>")
+			fmt.Fprintln(out, "```")
+			fmt.Fprintln(out, "</details>")
 			switch result {
 			case TestResultSuccess:
 				results[i] = append(results[i], "✅")
-				fmt.Println("✅ Passed")
+				fmt.Fprintln(out, "✅ Passed")
 			case TestResultFailure:
 				results[i] = append(results[i], "❌")
-				fmt.Println("❌ Failed")
+				fmt.Fprintln(out, "❌ Failed")
 			case TestResultNoImplementation:
 				results[i] = append(results[i], "⚠️")
-				fmt.Println("⚠️ Functionality not implemented")
+				fmt.Fprintln(out, "⚠️ Functionality not implemented")
 			}
 			i++
 		}
 	}
 
 	// Print summary
-	fmt.Println()
-	fmt.Println("## Summary")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "## Summary")
 	tableHeaders := []string{"Test"}
 	for _, alg := range algorithms {
 		tableHeaders = append(tableHeaders, alg.String())
@@ -156,6 +173,6 @@ func runTest(suite *TestSuite) error {
 	for _, result := range results {
 		table.AddRow(result...)
 	}
-	fmt.Println()
-	return table.Print(os.Stdout)
+	fmt.Fprintln(out)
+	return table.Print(out)
 }

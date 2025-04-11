@@ -2,7 +2,7 @@ package trace
 
 import (
 	"context"
-	"os"
+	"io"
 
 	"github.com/sirupsen/logrus"
 )
@@ -11,9 +11,9 @@ type contextKey int
 
 const loggerKey contextKey = iota
 
-func NewLogger(ctx context.Context) (context.Context, logrus.FieldLogger) {
+func NewLogger(ctx context.Context, out io.Writer) (context.Context, logrus.FieldLogger) {
 	logger := logrus.New()
-	logger.SetOutput(os.Stdout)
+	logger.SetOutput(out)
 	logger.SetFormatter(&logrus.TextFormatter{
 		DisableQuote: true},
 	)
@@ -26,7 +26,7 @@ func NewLogger(ctx context.Context) (context.Context, logrus.FieldLogger) {
 func Logger(ctx context.Context) logrus.FieldLogger {
 	logger, ok := ctx.Value(loggerKey).(logrus.FieldLogger)
 	if !ok {
-		_, logger = NewLogger(ctx)
+		return logrus.StandardLogger()
 	}
 	return logger
 }

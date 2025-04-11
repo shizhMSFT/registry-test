@@ -164,7 +164,7 @@ func (s *TestSuite) mountBlob(alg digest.Algorithm) TestResult {
 		return nil, errors.ErrUnsupported
 	}); err != nil {
 		if errors.Is(err, errors.ErrUnsupported) {
-			s.Logger.Infof("⚠️ Mount not supported: %v", err)
+			s.Logger.Infof("⚠️ Mount not supported")
 			return TestResultNoImplementation
 		}
 		s.Logger.Errorf("❌ Error mounting blob: %v", err)
