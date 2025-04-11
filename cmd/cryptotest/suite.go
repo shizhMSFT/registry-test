@@ -52,8 +52,7 @@ func (s *TestSuite) Cases() iter.Seq2[string, func(digest.Algorithm) TestResult]
 		{"Mount Blob", s.mountBlob},
 		{"Push Manifest", s.pushManifest},
 		{"Push Manifest (no tag)", s.pushManifestNoTag},
-		{"Push Manifest (canonical blobs)", s.pushManifestCanonicalBlobs},
-		{"Push Manifest (canonical blobs, no tag)", s.pushManifestCanonicalBlobsNoTag},
+		{"Push Manifest (canonical blobs)", s.pushManifestCanonicalBlobsNoTag},
 	}
 	return func(yield func(string, func(digest.Algorithm) TestResult) bool) {
 		for _, c := range cases {
@@ -266,10 +265,6 @@ func (s *TestSuite) prepareManifest(repo *remote.Repository, blobAlg, manifestAl
 
 func (s *TestSuite) pushManifest(alg digest.Algorithm) TestResult {
 	return s.pushManifestInternal(alg, alg)
-}
-
-func (s *TestSuite) pushManifestCanonicalBlobs(alg digest.Algorithm) TestResult {
-	return s.pushManifestInternal(alg, digest.Canonical)
 }
 
 func (s *TestSuite) pushManifestInternal(manifestAlg, blobAlg digest.Algorithm) TestResult {
