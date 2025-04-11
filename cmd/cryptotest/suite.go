@@ -50,9 +50,15 @@ func (s *TestSuite) Cases() iter.Seq2[string, func(digest.Algorithm) TestResult]
 		{"Resolve Blob", s.resolveBlob},
 		{"Pull Blob", s.pullBlob},
 		{"Mount Blob", s.mountBlob},
-		{"Push Manifest", s.pushManifest},
-		{"Push Manifest (no tag)", s.pushManifestNoTag},
-		{"Push Manifest (canonical blobs)", s.pushManifestCanonicalBlobsNoTag},
+		{"Push Manifest by tag", s.pushManifestByTag},
+		{"Push Manifest by digest", s.pushManifestByDigest},
+		{"Push Manifest by digest (canonical blobs)", s.pushManifestCanonicalBlobsByDigest},
+		{"Resolve Manifest with tag", s.resolveManifestWithTag},
+		{"Resolve Manifest with digest", s.resolveManifestWithDigest},
+		{"Resolve Manifest with digest (canonical blobs)", s.resolveManifestCanonicalBlobsWithDigest},
+		{"Pull Manifest by tag", s.pullManifestByTag},
+		{"Pull Manifest by digest", s.pullManifestByDigest},
+		{"Pull Manifest by digest (canonical blobs)", s.pullManifestCanonicalBlobsByDigest},
 	}
 	return func(yield func(string, func(digest.Algorithm) TestResult) bool) {
 		for _, c := range cases {
@@ -115,7 +121,7 @@ func (s *TestSuite) resolveBlob(alg digest.Algorithm) TestResult {
 		}
 	}
 	if resolvedDesc.Digest != desc.Digest {
-		s.Logger.Errorf("Resolved blob digest mismatch: expected %s, got %s", desc.Digest.String(), resolvedDesc.Digest.String())
+		s.Logger.Errorf("Resolved blob digest mismatch: expected %s, got %s", desc.Digest, resolvedDesc.Digest)
 		return TestResultFailure
 	}
 	if resolvedDesc.Size != desc.Size {
@@ -243,7 +249,10 @@ func (s *TestSuite) prepareManifest(repo *remote.Repository, blobAlg, manifestAl
 		return nil, ocispec.Descriptor{}, err
 	}
 	manifestDesc := descriptor.FromBytes(manifestAlg, manifest.MediaType, manifestBytes)
-	s.Logger.Infof("Generated manifest:\n%s", string(manifestBytes))
+	s.Logger.Infof("Generated manifest: %s\n%s", manifestDesc.Digest, string(manifestBytes))
+	if repo == nil {
+		return manifestBytes, manifestDesc, nil
+	}
 
 	// push blob
 	blobs := repo.Blobs()
@@ -263,17 +272,13 @@ func (s *TestSuite) prepareManifest(repo *remote.Repository, blobAlg, manifestAl
 	return manifestBytes, manifestDesc, nil
 }
 
-func (s *TestSuite) pushManifest(alg digest.Algorithm) TestResult {
-	return s.pushManifestInternal(alg, alg)
-}
-
-func (s *TestSuite) pushManifestInternal(manifestAlg, blobAlg digest.Algorithm) TestResult {
-	repo, err := s.repository(manifestAlg)
+func (s *TestSuite) pushManifestByTag(alg digest.Algorithm) TestResult {
+	repo, err := s.repository(alg)
 	if err != nil {
 		return TestResultFailure
 	}
 
-	manifestBytes, manifestDesc, err := s.prepareManifest(repo, blobAlg, manifestAlg)
+	manifestBytes, manifestDesc, err := s.prepareManifest(repo, alg, alg)
 	if err != nil {
 		return TestResultFailure
 	}
@@ -301,15 +306,15 @@ func (s *TestSuite) pushManifestInternal(manifestAlg, blobAlg digest.Algorithm) 
 	return TestResultSuccess
 }
 
-func (s *TestSuite) pushManifestNoTag(alg digest.Algorithm) TestResult {
-	return s.pushManifestNoTagInternal(alg, alg)
+func (s *TestSuite) pushManifestByDigest(alg digest.Algorithm) TestResult {
+	return s.pushManifestByDigestInternal(alg, alg)
 }
 
-func (s *TestSuite) pushManifestCanonicalBlobsNoTag(alg digest.Algorithm) TestResult {
-	return s.pushManifestNoTagInternal(alg, digest.Canonical)
+func (s *TestSuite) pushManifestCanonicalBlobsByDigest(alg digest.Algorithm) TestResult {
+	return s.pushManifestByDigestInternal(digest.Canonical, alg)
 }
 
-func (s *TestSuite) pushManifestNoTagInternal(manifestAlg, blobAlg digest.Algorithm) TestResult {
+func (s *TestSuite) pushManifestByDigestInternal(blobAlg, manifestAlg digest.Algorithm) TestResult {
 	repo, err := s.repository(manifestAlg)
 	if err != nil {
 		return TestResultFailure
@@ -338,6 +343,187 @@ func (s *TestSuite) pushManifestNoTagInternal(manifestAlg, blobAlg digest.Algori
 	}
 
 	s.Logger.Infof("✅ Pushed manifest: %s", manifestDesc.Digest.String())
+	return TestResultSuccess
+}
+
+func (s *TestSuite) resolveManifestWithTag(alg digest.Algorithm) TestResult {
+	repo, err := s.repository(alg)
+	if err != nil {
+		return TestResultFailure
+	}
+
+	// generate descriptor
+	_, manifestDesc, err := s.prepareManifest(nil, alg, digest.Canonical)
+	if err != nil {
+		return TestResultFailure
+	}
+
+	// resolve manifest
+	tag := "test"
+	manifests := repo.Manifests()
+	resolvedDesc, err := manifests.Resolve(s.Context, tag)
+	if err != nil {
+		s.Logger.Errorf("Error resolving manifest: %v", err)
+		return TestResultFailure
+	}
+	if resolvedDesc.MediaType != manifestDesc.MediaType {
+		s.Logger.Errorf("Resolved manifest media type mismatch: expected %s, got %s", manifestDesc.MediaType, resolvedDesc.MediaType)
+		return TestResultFailure
+	}
+	if resolvedDesc.Digest != manifestDesc.Digest {
+		s.Logger.Errorf("Resolved manifest digest mismatch: expected %s, got %s", manifestDesc.Digest, resolvedDesc.Digest)
+		return TestResultFailure
+	}
+	if resolvedDesc.Size != manifestDesc.Size {
+		s.Logger.Errorf("Resolved manifest size mismatch: expected %d, got %d", manifestDesc.Size, resolvedDesc.Size)
+		return TestResultFailure
+	}
+	s.Logger.Infof(
+		"✅ Resolved manifest:\n- Media type: %s\n- Digest: %s\n- Size: %d",
+		resolvedDesc.MediaType,
+		resolvedDesc.Digest.String(),
+		resolvedDesc.Size,
+	)
+	return TestResultSuccess
+}
+
+func (s *TestSuite) resolveManifestWithDigest(alg digest.Algorithm) TestResult {
+	return s.resolveManifestWithDigestInternal(alg, alg)
+}
+
+func (s *TestSuite) resolveManifestCanonicalBlobsWithDigest(alg digest.Algorithm) TestResult {
+	return s.resolveManifestWithDigestInternal(digest.Canonical, alg)
+}
+
+func (s *TestSuite) resolveManifestWithDigestInternal(blobAlg, manifestAlg digest.Algorithm) TestResult {
+	repo, err := s.repository(manifestAlg)
+	if err != nil {
+		return TestResultFailure
+	}
+
+	// generate descriptor
+	_, manifestDesc, err := s.prepareManifest(nil, blobAlg, manifestAlg)
+	if err != nil {
+		return TestResultFailure
+	}
+
+	// resolve manifest
+	manifests := repo.Manifests()
+	resolvedDesc, err := manifests.Resolve(s.Context, manifestDesc.Digest.String())
+	if err != nil {
+		s.Logger.Errorf("Error resolving manifest: %v", err)
+		return TestResultFailure
+	}
+	if resolvedDesc.MediaType != manifestDesc.MediaType {
+		s.Logger.Errorf("Resolved manifest media type mismatch: expected %s, got %s", manifestDesc.MediaType, resolvedDesc.MediaType)
+		return TestResultFailure
+	}
+	if resolvedDesc.Digest != manifestDesc.Digest {
+		s.Logger.Errorf("Resolved manifest digest mismatch: expected %s, got %s", manifestDesc.Digest, resolvedDesc.Digest)
+		return TestResultFailure
+	}
+	if resolvedDesc.Size != manifestDesc.Size {
+		s.Logger.Errorf("Resolved manifest size mismatch: expected %d, got %d", manifestDesc.Size, resolvedDesc.Size)
+		return TestResultFailure
+	}
+	s.Logger.Infof(
+		"✅ Resolved manifest:\n- Media type: %s\n- Digest: %s\n- Size: %d",
+		resolvedDesc.MediaType,
+		resolvedDesc.Digest.String(),
+		resolvedDesc.Size,
+	)
+	return TestResultSuccess
+}
+
+func (s *TestSuite) pullManifestByTag(alg digest.Algorithm) TestResult {
+	repo, err := s.repository(alg)
+	if err != nil {
+		return TestResultFailure
+	}
+
+	// generate descriptor
+	manifestBytes, manifestDesc, err := s.prepareManifest(nil, alg, digest.Canonical)
+	if err != nil {
+		return TestResultFailure
+	}
+
+	// pull manifest
+	tag := "test"
+	manifests := repo.Manifests()
+	desc, rc, err := manifests.FetchReference(s.Context, tag)
+	if err != nil {
+		s.Logger.Errorf("Error pulling manifest: %v", err)
+		return TestResultFailure
+	}
+	defer rc.Close()
+
+	if desc.MediaType != manifestDesc.MediaType {
+		s.Logger.Errorf("Fetched manifest media type mismatch: expected %s, got %s", manifestDesc.MediaType, desc.MediaType)
+		return TestResultFailure
+	}
+	if desc.Digest != manifestDesc.Digest {
+		s.Logger.Errorf("Fetched manifest digest mismatch: expected %s, got %s", manifestDesc.Digest, desc.Digest)
+		return TestResultFailure
+	}
+	if desc.Size != manifestDesc.Size {
+		s.Logger.Errorf("Fetched manifest size mismatch: expected %d, got %d", manifestDesc.Size, desc.Size)
+		return TestResultFailure
+	}
+
+	fetched, err := content.ReadAll(rc, manifestDesc)
+	if err != nil {
+		s.Logger.Errorf("Error reading manifest: %v", err)
+		return TestResultFailure
+	}
+	if !bytes.Equal(fetched, manifestBytes) {
+		s.Logger.Errorf("Fetched manifest content mismatch: expected %s, got %s", string(manifestBytes), string(fetched))
+		return TestResultFailure
+	}
+
+	s.Logger.Infof("✅ Fetched manifest: %s", manifestDesc.Digest.String())
+	return TestResultSuccess
+}
+
+func (s *TestSuite) pullManifestByDigest(alg digest.Algorithm) TestResult {
+	return s.pullManifestByDigestInternal(alg, alg)
+}
+
+func (s *TestSuite) pullManifestCanonicalBlobsByDigest(alg digest.Algorithm) TestResult {
+	return s.pullManifestByDigestInternal(digest.Canonical, alg)
+}
+
+func (s *TestSuite) pullManifestByDigestInternal(blobAlg, manifestAlg digest.Algorithm) TestResult {
+	repo, err := s.repository(manifestAlg)
+	if err != nil {
+		return TestResultFailure
+	}
+
+	// generate descriptor
+	manifestBytes, manifestDesc, err := s.prepareManifest(nil, blobAlg, manifestAlg)
+	if err != nil {
+		return TestResultFailure
+	}
+
+	// pull manifest
+	manifests := repo.Manifests()
+	rc, err := manifests.Fetch(s.Context, manifestDesc)
+	if err != nil {
+		s.Logger.Errorf("Error pulling manifest: %v", err)
+		return TestResultFailure
+	}
+	defer rc.Close()
+
+	fetched, err := content.ReadAll(rc, manifestDesc)
+	if err != nil {
+		s.Logger.Errorf("Error reading manifest: %v", err)
+		return TestResultFailure
+	}
+	if !bytes.Equal(fetched, manifestBytes) {
+		s.Logger.Errorf("Fetched manifest content mismatch: expected %s, got %s", string(manifestBytes), string(fetched))
+		return TestResultFailure
+	}
+
+	s.Logger.Infof("✅ Fetched manifest: %s", manifestDesc.Digest.String())
 	return TestResultSuccess
 }
 
