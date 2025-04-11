@@ -14,9 +14,7 @@ const loggerKey contextKey = iota
 func NewLogger(ctx context.Context, out io.Writer) (context.Context, logrus.FieldLogger) {
 	logger := logrus.New()
 	logger.SetOutput(out)
-	logger.SetFormatter(&logrus.TextFormatter{
-		DisableQuote: true},
-	)
+	logger.SetFormatter(&Formatter{})
 	logger.SetLevel(logrus.DebugLevel)
 	entry := logger.WithContext(ctx)
 	return context.WithValue(ctx, loggerKey, entry), entry

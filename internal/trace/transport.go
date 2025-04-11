@@ -15,6 +15,8 @@ var requestCount uint64
 
 type Transport struct {
 	http.RoundTripper
+
+	lastResponse atomic.Pointer[http.Response]
 }
 
 func NewTransport(base http.RoundTripper) *Transport {
@@ -27,19 +29,26 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	logger := Logger(ctx)
 
 	// log the request
-	logger.Debugf("📤 Request #%d\n%s %s\n%s\n\n", id, req.Method, req.URL, logHeader(req.Header))
+	logger.Debugf("📤 Request #%d\n%s %s\n%s\n", id, req.Method, req.URL, logHeader(req.Header))
 
 	// log the response
 	resp, err := t.RoundTripper.RoundTrip(req)
 	if err != nil {
-		logger.Errorf("❌ Response #%d\nError: %v", id, err)
+		logger.Errorf("Response #%d\nError: %v", id, err)
 	} else if resp == nil {
-		logger.Errorf("❌ Response #%d\nMissing response", id)
+		logger.Errorf("Response #%d\nMissing response", id)
 	} else {
-		logger.Debugf("📥 Response #%d\n%s\n%s\n\n%s\n", id, resp.Status, logHeader(resp.Header), logResponseBody(resp))
+		logger.Debugf("📥 Response #%d\n%s\n%s\n\n%s", id, resp.Status, logHeader(resp.Header), logResponseBody(resp))
 	}
 
+	// store the last response
+	t.lastResponse.Store(resp)
+
 	return resp, err
+}
+
+func (t *Transport) LastResponse() *http.Response {
+	return t.lastResponse.Load()
 }
 
 func logHeader(header http.Header) string {

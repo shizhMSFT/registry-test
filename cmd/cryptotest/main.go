@@ -143,6 +143,7 @@ func runTest(suite *TestSuite, out io.Writer) error {
 			fmt.Fprintln(out)
 			fmt.Fprintln(out, "<details>")
 			fmt.Fprintln(out, "<summary>Test logs</summary>")
+			fmt.Fprintln(out)
 			fmt.Fprintln(out, "```")
 			result := test(alg)
 			fmt.Fprintln(out, "```")
@@ -155,8 +156,8 @@ func runTest(suite *TestSuite, out io.Writer) error {
 				results[i] = append(results[i], "❌")
 				fmt.Fprintln(out, "❌ Failed")
 			case TestResultNoImplementation:
-				results[i] = append(results[i], "⚠️")
-				fmt.Fprintln(out, "⚠️ Functionality not implemented")
+				results[i] = append(results[i], "⛔")
+				fmt.Fprintln(out, "⛔ Functionality not implemented")
 			}
 			i++
 		}
