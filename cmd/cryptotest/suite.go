@@ -53,12 +53,15 @@ func (s *TestSuite) Cases() iter.Seq2[string, func(digest.Algorithm) TestResult]
 		{"Push Manifest by tag", s.pushManifestByTag},
 		{"Push Manifest by digest", s.pushManifestByDigest},
 		{"Push Manifest by digest (canonical blobs)", s.pushManifestCanonicalBlobsByDigest},
+		{"Push Manifest by digest (mixed blobs)", s.pushManifestMixedBlobsByDigest},
 		{"Resolve Manifest with tag", s.resolveManifestWithTag},
 		{"Resolve Manifest with digest", s.resolveManifestWithDigest},
 		{"Resolve Manifest with digest (canonical blobs)", s.resolveManifestCanonicalBlobsWithDigest},
+		{"Resolve Manifest with digest (mixed blobs)", s.resolveManifestMixedBlobsWithDigest},
 		{"Pull Manifest by tag", s.pullManifestByTag},
 		{"Pull Manifest by digest", s.pullManifestByDigest},
 		{"Pull Manifest by digest (canonical blobs)", s.pullManifestCanonicalBlobsByDigest},
+		{"Pull Manifest by digest (mixed blobs)", s.pullManifestMixedBlobsByDigest},
 	}
 	return func(yield func(string, func(digest.Algorithm) TestResult) bool) {
 		for _, c := range cases {
@@ -225,13 +228,17 @@ func (s *TestSuite) mountBlob(alg digest.Algorithm) TestResult {
 }
 
 func (s *TestSuite) prepareManifest(repo *remote.Repository, blobAlg, manifestAlg digest.Algorithm) ([]byte, ocispec.Descriptor, error) {
+	return s.prepareManifestInternal(repo, newTestAlgorithms(blobAlg, manifestAlg))
+}
+
+func (s *TestSuite) prepareManifestInternal(repo *remote.Repository, alg *testAlgorithms) ([]byte, ocispec.Descriptor, error) {
 	// generate descriptor
 	configBlob := []byte("{}")
-	configDesc := descriptor.FromBytes(blobAlg, ocispec.MediaTypeImageConfig, configBlob)
+	configDesc := descriptor.FromBytes(alg.Config, ocispec.MediaTypeImageConfig, configBlob)
 	fooBlob := []byte("foo")
-	fooDesc := descriptor.FromBytes(blobAlg, ocispec.MediaTypeImageLayer, fooBlob)
+	fooDesc := descriptor.FromBytes(alg.Layers[0], ocispec.MediaTypeImageLayer, fooBlob)
 	barBlob := []byte("bar")
-	barDesc := descriptor.FromBytes(blobAlg, ocispec.MediaTypeImageLayer, barBlob)
+	barDesc := descriptor.FromBytes(alg.Layers[1], ocispec.MediaTypeImageLayer, barBlob)
 	manifest := ocispec.Manifest{
 		Versioned: specs.Versioned{
 			SchemaVersion: 2,
@@ -248,7 +255,7 @@ func (s *TestSuite) prepareManifest(repo *remote.Repository, blobAlg, manifestAl
 		s.Logger.Errorf("Error marshalling manifest: %v", err)
 		return nil, ocispec.Descriptor{}, err
 	}
-	manifestDesc := descriptor.FromBytes(manifestAlg, manifest.MediaType, manifestBytes)
+	manifestDesc := descriptor.FromBytes(alg.Manifest, manifest.MediaType, manifestBytes)
 	s.Logger.Infof("Generated manifest: %s\n%s", manifestDesc.Digest, string(manifestBytes))
 	if repo == nil {
 		return manifestBytes, manifestDesc, nil
@@ -307,20 +314,28 @@ func (s *TestSuite) pushManifestByTag(alg digest.Algorithm) TestResult {
 }
 
 func (s *TestSuite) pushManifestByDigest(alg digest.Algorithm) TestResult {
-	return s.pushManifestByDigestInternal(alg, alg)
+	return s.pushManifestByDigestInternal(newTestAlgorithms(alg, alg))
 }
 
 func (s *TestSuite) pushManifestCanonicalBlobsByDigest(alg digest.Algorithm) TestResult {
-	return s.pushManifestByDigestInternal(digest.Canonical, alg)
+	return s.pushManifestByDigestInternal(newTestAlgorithms(digest.Canonical, alg))
 }
 
-func (s *TestSuite) pushManifestByDigestInternal(blobAlg, manifestAlg digest.Algorithm) TestResult {
-	repo, err := s.repository(manifestAlg)
+func (s *TestSuite) pushManifestMixedBlobsByDigest(alg digest.Algorithm) TestResult {
+	return s.pushManifestByDigestInternal(&testAlgorithms{
+		Config:   alg,
+		Layers:   [2]digest.Algorithm{alg, digest.Canonical},
+		Manifest: alg,
+	})
+}
+
+func (s *TestSuite) pushManifestByDigestInternal(alg *testAlgorithms) TestResult {
+	repo, err := s.repository(alg.Manifest)
 	if err != nil {
 		return TestResultFailure
 	}
 
-	manifestBytes, manifestDesc, err := s.prepareManifest(repo, blobAlg, manifestAlg)
+	manifestBytes, manifestDesc, err := s.prepareManifestInternal(repo, alg)
 	if err != nil {
 		return TestResultFailure
 	}
@@ -388,21 +403,29 @@ func (s *TestSuite) resolveManifestWithTag(alg digest.Algorithm) TestResult {
 }
 
 func (s *TestSuite) resolveManifestWithDigest(alg digest.Algorithm) TestResult {
-	return s.resolveManifestWithDigestInternal(alg, alg)
+	return s.resolveManifestWithDigestInternal(newTestAlgorithms(alg, alg))
 }
 
 func (s *TestSuite) resolveManifestCanonicalBlobsWithDigest(alg digest.Algorithm) TestResult {
-	return s.resolveManifestWithDigestInternal(digest.Canonical, alg)
+	return s.resolveManifestWithDigestInternal(newTestAlgorithms(digest.Canonical, alg))
 }
 
-func (s *TestSuite) resolveManifestWithDigestInternal(blobAlg, manifestAlg digest.Algorithm) TestResult {
-	repo, err := s.repository(manifestAlg)
+func (s *TestSuite) resolveManifestMixedBlobsWithDigest(alg digest.Algorithm) TestResult {
+	return s.resolveManifestWithDigestInternal(&testAlgorithms{
+		Config:   alg,
+		Layers:   [2]digest.Algorithm{alg, digest.Canonical},
+		Manifest: alg,
+	})
+}
+
+func (s *TestSuite) resolveManifestWithDigestInternal(alg *testAlgorithms) TestResult {
+	repo, err := s.repository(alg.Manifest)
 	if err != nil {
 		return TestResultFailure
 	}
 
 	// generate descriptor
-	_, manifestDesc, err := s.prepareManifest(nil, blobAlg, manifestAlg)
+	_, manifestDesc, err := s.prepareManifestInternal(nil, alg)
 	if err != nil {
 		return TestResultFailure
 	}
@@ -485,21 +508,29 @@ func (s *TestSuite) pullManifestByTag(alg digest.Algorithm) TestResult {
 }
 
 func (s *TestSuite) pullManifestByDigest(alg digest.Algorithm) TestResult {
-	return s.pullManifestByDigestInternal(alg, alg)
+	return s.pullManifestByDigestInternal(newTestAlgorithms(alg, alg))
 }
 
 func (s *TestSuite) pullManifestCanonicalBlobsByDigest(alg digest.Algorithm) TestResult {
-	return s.pullManifestByDigestInternal(digest.Canonical, alg)
+	return s.pullManifestByDigestInternal(newTestAlgorithms(digest.Canonical, alg))
 }
 
-func (s *TestSuite) pullManifestByDigestInternal(blobAlg, manifestAlg digest.Algorithm) TestResult {
-	repo, err := s.repository(manifestAlg)
+func (s *TestSuite) pullManifestMixedBlobsByDigest(alg digest.Algorithm) TestResult {
+	return s.pullManifestByDigestInternal(&testAlgorithms{
+		Config:   alg,
+		Layers:   [2]digest.Algorithm{alg, digest.Canonical},
+		Manifest: alg,
+	})
+}
+
+func (s *TestSuite) pullManifestByDigestInternal(alg *testAlgorithms) TestResult {
+	repo, err := s.repository(alg.Manifest)
 	if err != nil {
 		return TestResultFailure
 	}
 
 	// generate descriptor
-	manifestBytes, manifestDesc, err := s.prepareManifest(nil, blobAlg, manifestAlg)
+	manifestBytes, manifestDesc, err := s.prepareManifestInternal(nil, alg)
 	if err != nil {
 		return TestResultFailure
 	}
@@ -545,4 +576,18 @@ func (s *TestSuite) repository(alg digest.Algorithm) (*remote.Repository, error)
 
 func (s *TestSuite) lastResponse() *http.Response {
 	return s.Client.Client.Transport.(*trace.Transport).LastResponse()
+}
+
+type testAlgorithms struct {
+	Config   digest.Algorithm
+	Layers   [2]digest.Algorithm
+	Manifest digest.Algorithm
+}
+
+func newTestAlgorithms(blobAlg, manifestAlg digest.Algorithm) *testAlgorithms {
+	return &testAlgorithms{
+		Config:   blobAlg,
+		Layers:   [2]digest.Algorithm{blobAlg, blobAlg},
+		Manifest: manifestAlg,
+	}
 }
