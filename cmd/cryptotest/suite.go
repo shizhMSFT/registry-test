@@ -173,12 +173,7 @@ func (s *TestSuite) pullBlob(alg digest.Algorithm) TestResult {
 
 func (s *TestSuite) mountBlob(alg digest.Algorithm) TestResult {
 	ss := *s
-	if ss.Namespace == "" {
-		ss.Namespace = "mount"
-	} else {
-		ss.Namespace += "/mount"
-	}
-	repo, err := ss.repository(alg)
+	repo, err := ss.repository(alg + "-mount")
 	if err != nil {
 		return TestResultFailure
 	}
